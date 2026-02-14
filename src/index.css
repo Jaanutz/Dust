@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary-background: #fafafa;
+  --color-secondary-background: #f1f1f1;
+  --color-secondary-text: #555555;
+  --color-accent: #067efe;
+}
+
+:root {
+  font-size: 16px;
+  line-height: 24px;
+  letter-spacing: -0.005em;
+
+  color: var(--color-secondary-text);
+  background-color: var(--color-secondary-background);
+}
+
+body {
+  font-family: "Inter";
+}
+
+.lucide {
+  stroke-width: 1.5;
+}
