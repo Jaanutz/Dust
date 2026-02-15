@@ -89,3 +89,9 @@ impl TaskManager {
         join_all(futures).await
     }
 }
+
+impl TaskManager {
+    pub fn client(&self) -> &Client {
+        &self.client
+    }
+}

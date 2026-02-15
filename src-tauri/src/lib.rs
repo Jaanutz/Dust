@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use tokio::sync::Mutex;
 
-use crate::{task_manager::TaskManager, tasks::TaskJson};
+use crate::{
+    task_manager::TaskManager,
+    tasks::{Task, TaskJson},
+};
 
 pub mod error;
 pub mod network;
@@ -83,7 +86,9 @@ async fn add_task(
     task_manager: tauri::State<'_, TaskManagerState>,
 ) -> Result<String, String> {
     let mut manager = task_manager.lock().await;
-    let task = crate::tasks::Task::new(&filename, &file_path, &url).map_err(|e| e.to_string())?;
+    let task = Task::new(&filename, &file_path, &url, manager.client())
+        .await
+        .map_err(|e| e.to_string())?;
     let path = task.file_path().to_string_lossy().to_string();
     manager.add_task(task);
 

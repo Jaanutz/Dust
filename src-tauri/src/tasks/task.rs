@@ -13,7 +13,7 @@ use url::Url;
 
 use crate::{
     error::Error,
-    network::{fetch_total_bytes, get_extension_from_url_path},
+    network::{fetch_total_bytes, get_best_extension},
     tasks::TaskState,
 };
 
@@ -31,14 +31,18 @@ pub struct Task {
 }
 
 impl Task {
-    pub fn new(filename: &str, file_path: &str, url: &str) -> Result<Self, Error> {
+    pub async fn new(
+        filename: &str,
+        file_path: &str,
+        url: &str,
+        client: &Client,
+    ) -> Result<Self, Error> {
         let url = Url::parse(url)?;
-        let ext = get_extension_from_url_path(&url).unwrap_or_default();
 
-        let mut full_path: PathBuf = PathBuf::from(file_path).join(filename);
-        full_path.set_extension(ext);
-
+        let full_path: PathBuf =
+            Task::construct_full_file_path(client, filename, file_path, &url).await;
         Task::validate_full_file_path(&full_path)?;
+
         let full_path_str = full_path.to_str().ok_or(Error::IO(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "Invalid file path",
@@ -46,7 +50,7 @@ impl Task {
 
         let hash = Task::generate_file_path_hash(full_path_str);
 
-        Ok(Task {
+        let mut task = Task {
             state: Arc::new(Mutex::new(TaskState::Paused)),
             bytes_received: Arc::new(Mutex::new(0)),
             total_bytes: Arc::new(Mutex::new(None)),
@@ -54,7 +58,22 @@ impl Task {
             file_path: full_path,
             url,
             hash,
-        })
+        };
+        task.initialize_metadata(client).await?;
+        Ok(task)
+    }
+
+    async fn construct_full_file_path(
+        client: &Client,
+        filename: &str,
+        file_path: &str,
+        url: &Url,
+    ) -> PathBuf {
+        let mut full_path: PathBuf = PathBuf::from(file_path).join(filename);
+        if let Some(ext) = get_best_extension(client, url).await {
+            full_path.set_extension(ext);
+        }
+        full_path
     }
 
     fn validate_full_file_path(full_path: &PathBuf) -> Result<(), Error> {
@@ -166,7 +185,6 @@ impl Task {
         *state_guard = TaskState::Running;
         drop(state_guard);
 
-        self.initialize_metadata(client).await?;
         *self.cancellation_token.lock().await = CancellationToken::new();
 
         self.download(client).await
