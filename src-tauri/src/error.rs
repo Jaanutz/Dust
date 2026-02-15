@@ -17,6 +17,9 @@ pub enum Error {
     #[error("Tauri error: {0}")]
     Tauri(#[from] tauri::Error),
 
+    #[error("Serde JSON error: {0}")]
+    JsonError(#[from] serde_json::Error),
+
     #[error("Invalid input: {0}")]
     InvalidInput(String),
 }

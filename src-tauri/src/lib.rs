@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use tauri::WindowEvent;
 use tokio::sync::Mutex;
 
 use crate::{
@@ -97,10 +98,23 @@ async fn add_task(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let task_manager = Arc::new(Mutex::new(TaskManager::new()));
+    let task_manager = tauri::async_runtime::block_on(async {
+        let manager = TaskManager::new().await;
+        Arc::new(Mutex::new(manager))
+    });
 
     tauri::Builder::default()
-        .manage(task_manager)
+        .manage(task_manager.clone())
+        .on_window_event(move |_window, event| {
+            if let WindowEvent::CloseRequested { api: _, .. } = event {
+                let task_manager_cloned = task_manager.clone();
+                tauri::async_runtime::block_on(async move {
+                    if let Err(e) = task_manager_cloned.lock().await.save_tasks().await {
+                        eprintln!("Failed to save tasks: {e}");
+                    }
+                });
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             spawn_tasks,
             pause_tasks,

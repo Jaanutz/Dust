@@ -13,6 +13,10 @@ export function useTaskPolling() {
   const intervalRef = useRef<number | null>(null);
 
   useEffect(() => {
+    refresh();
+  }, []);
+
+  useEffect(() => {
     if (intervalRef.current !== null) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;

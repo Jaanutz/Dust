@@ -8,13 +8,13 @@ use tokio::{
     select,
     sync::Mutex,
 };
-use tokio_util::sync::CancellationToken;
+use tokio_util::{sync::CancellationToken};
 use url::Url;
 
 use crate::{
     error::Error,
     network::{fetch_total_bytes, get_best_extension},
-    tasks::TaskState,
+    tasks::{TaskPersisted, TaskState},
 };
 
 #[derive(Clone)]
@@ -97,6 +97,34 @@ impl Task {
     fn generate_file_path_hash(full_path: &str) -> String {
         let part_file_hash_bytes = Sha1::digest(full_path);
         format!("{:x}", part_file_hash_bytes)
+    }
+}
+
+impl Task {
+    pub async fn from_persisted(persisted: TaskPersisted, client: &Client) -> Result<Self, Error> {
+        let state = persisted.state;
+        let url = Url::parse(&persisted.url)?;
+        let file_path = PathBuf::from(persisted.file_path);
+        let hash = persisted.hash;
+        let total_bytes = persisted.total_bytes;
+        let mut bytes_received = 0;
+        if !matches!(state, TaskState::Completed) {
+            Task::validate_full_file_path(&file_path)?;
+        } else {
+            bytes_received = total_bytes.unwrap_or(0);
+        }
+
+        let mut task = Task {
+            state: Arc::new(Mutex::new(state)),
+            bytes_received: Arc::new(Mutex::new(bytes_received)),
+            total_bytes: Arc::new(Mutex::new(total_bytes)),
+            cancellation_token: Arc::new(Mutex::new(CancellationToken::new())),
+            file_path,
+            url,
+            hash,
+        };
+        task.initialize_metadata(client).await?;
+        Ok(task)
     }
 }
 

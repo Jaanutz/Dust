@@ -6,7 +6,7 @@ use tokio::{spawn, task::JoinHandle};
 
 use crate::{
     error::Error,
-    tasks::{Task, TaskJson},
+    tasks::{Task, TaskJson, TaskPersisted},
 };
 
 pub struct TaskManager {
@@ -15,7 +15,7 @@ pub struct TaskManager {
 }
 
 impl TaskManager {
-    pub fn new() -> Self {
+    pub async fn new() -> Self {
         let client = Client::builder()
             .user_agent(
                 "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 \
@@ -23,10 +23,12 @@ impl TaskManager {
             )
             .build()
             .unwrap_or(Client::new());
-        Self {
-            tasks: HashMap::new(),
-            client,
-        }
+
+        let tasks = TaskManager::load_tasks(&client)
+            .await
+            .unwrap_or_else(|_| HashMap::new());
+
+        Self { tasks, client }
     }
 
     pub fn add_task(&mut self, task: Task) -> String {
@@ -93,5 +95,34 @@ impl TaskManager {
 impl TaskManager {
     pub fn client(&self) -> &Client {
         &self.client
+    }
+}
+
+impl TaskManager {
+    pub async fn save_tasks(&self) -> Result<(), Error> {
+        let mut persisted = Vec::new();
+
+        for task in self.tasks.values() {
+            persisted.push(TaskPersisted::from_task(task).await);
+        }
+
+        let json = serde_json::to_string_pretty(&persisted)?;
+        std::fs::write("tasks.json", json)?;
+        Ok(())
+    }
+
+    pub async fn load_tasks(client: &Client) -> Result<HashMap<String, Task>, Error> {
+        let json = tokio::fs::read_to_string("tasks.json").await?;
+        let persisted: Vec<TaskPersisted> = serde_json::from_str(&json)?;
+
+        let mut tasks = HashMap::new();
+
+        for task in persisted {
+            let hash = task.hash.clone();
+            let task = Task::from_persisted(task, client).await?;
+            tasks.insert(hash, task);
+        }
+
+        Ok(tasks)
     }
 }
