@@ -9,4 +9,5 @@ export interface Task {
 
   total_bytes?: number;
   progress?: number;
+  speed?: number;
 }

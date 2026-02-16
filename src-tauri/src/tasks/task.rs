@@ -1,5 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
-
+use std::collections::VecDeque;
+use std::time::{Duration, Instant};
 use reqwest::{Client, StatusCode};
 use sha1::{Digest, Sha1};
 use tokio::{
@@ -10,25 +11,27 @@ use tokio::{
 };
 use tokio_util::{sync::CancellationToken};
 use url::Url;
-
 use crate::{
     error::Error,
     network::{fetch_total_bytes, get_best_extension},
     tasks::{TaskPersisted, TaskState},
 };
 
+
 #[derive(Clone)]
 pub struct Task {
     state: Arc<Mutex<TaskState>>,
     bytes_received: Arc<Mutex<u64>>,
+    history_bytes_received: Arc<Mutex<VecDeque<(Instant, u64)>>>,
     total_bytes: Arc<Mutex<Option<u64>>>,
 
-    cancellation_token: Arc<Mutex<CancellationToken>>,
+    cancellation_token: Arc<CancellationToken>,
 
     file_path: PathBuf,
     url: Url,
     hash: String,
 }
+
 
 impl Task {
     pub async fn new(
@@ -53,8 +56,9 @@ impl Task {
         let mut task = Task {
             state: Arc::new(Mutex::new(TaskState::Paused)),
             bytes_received: Arc::new(Mutex::new(0)),
+            history_bytes_received: Arc::new(Mutex::new(VecDeque::new())),
             total_bytes: Arc::new(Mutex::new(None)),
-            cancellation_token: Arc::new(Mutex::new(CancellationToken::new())),
+            cancellation_token: Arc::new(CancellationToken::new()),
             file_path: full_path,
             url,
             hash,
@@ -117,8 +121,9 @@ impl Task {
         let mut task = Task {
             state: Arc::new(Mutex::new(state)),
             bytes_received: Arc::new(Mutex::new(bytes_received)),
+            history_bytes_received: Arc::new(Mutex::new(VecDeque::new())),
             total_bytes: Arc::new(Mutex::new(total_bytes)),
-            cancellation_token: Arc::new(Mutex::new(CancellationToken::new())),
+            cancellation_token: Arc::new(CancellationToken::new()),
             file_path,
             url,
             hash,
@@ -126,6 +131,45 @@ impl Task {
         task.initialize_metadata(client).await?;
         Ok(task)
     }
+
+    pub async fn average_speed(&self) -> Option<f64>{
+        let history = self.history_bytes_received.lock().await;
+        if let (Some((start_time, start_bytes)), Some((end_time, end_bytes))) =
+            (history.front(), history.back()) {
+            let duration = end_time.duration_since(*start_time).as_secs_f64();
+            if (duration > 0.1) {
+                return Some((end_bytes - start_bytes) as f64 / duration as f64);
+            }
+        }
+    None
+    }
+    fn start_speed_monitior(&self) {
+        let cancellation_token = self.cancellation_token.clone();
+        let history_bytes_received = self.history_bytes_received.clone();
+        let bytes_received = self.bytes_received.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = cancellation_token.cancelled() => {
+                        break;
+                    }
+
+                    _ = tokio::time::sleep(Duration::from_millis(200)) => {
+
+                        let receives_bytes = bytes_received.lock().await;
+                        let mut history_bytes_received = history_bytes_received.lock().await;
+
+                        history_bytes_received.push_back((Instant::now(), *receives_bytes));
+
+                        if (history_bytes_received.len() >= 15){
+                            history_bytes_received.pop_front();
+                        }
+                    }
+                }
+            }
+        });
+    }
+
 }
 
 impl Task {
@@ -169,12 +213,18 @@ impl Task {
             response = client.get(url).send().await?;
         }
 
+        let part_path = self.part_file_path();
+
+        if let Some(parent) = part_path.parent() {
+            fs::create_dir_all(parent).await?;
+        }
+
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)
             .open(self.part_file_path())
             .await?;
-        let cancellation_token = self.cancellation_token.lock().await.clone();
+        let cancellation_token = self.cancellation_token.clone();
 
         loop {
             let chunk = select! {
@@ -209,12 +259,13 @@ impl Task {
         if matches!(*state_guard, TaskState::Completed | TaskState::Running) {
             return Ok(());
         }
-
         *state_guard = TaskState::Running;
         drop(state_guard);
 
-        *self.cancellation_token.lock().await = CancellationToken::new();
 
+
+        self.cancellation_token = Arc::new(CancellationToken::new());
+        self.start_speed_monitior();
         self.download(client).await
     }
 
@@ -238,7 +289,7 @@ impl Task {
     }
 
     async fn cancel_token(&self) {
-        self.cancellation_token.lock().await.cancel()
+        self.cancellation_token.cancel()
     }
 }
 
