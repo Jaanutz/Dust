@@ -1,28 +1,37 @@
 use std::sync::Arc;
 
+use futures::future::join_all;
 use tauri::WindowEvent;
 use tokio::sync::Mutex;
 
 use crate::{
-    task_manager::TaskManager,
-    tasks::{Task, TaskJson},
+    manager::TaskManager,
+    task::{Task, TaskJson},
 };
 
 pub mod error;
+pub mod manager;
 pub mod network;
-pub mod task_manager;
-pub mod tasks;
+pub mod task;
+pub mod worker;
 
-type TaskManagerState = Arc<Mutex<TaskManager>>;
+type SharedTaskManager = Arc<Mutex<TaskManager>>;
 
 #[tauri::command]
 async fn spawn_tasks(
     hashes: Vec<String>,
-    task_manager: tauri::State<'_, TaskManagerState>,
+    task_manager: tauri::State<'_, SharedTaskManager>,
 ) -> Result<Vec<String>, String> {
-    let manager = task_manager.lock().await;
-    for hash in &hashes {
-        manager.spawn_task(hash).await.map_err(|e| e.to_string())?;
+    let task_manager = task_manager.lock().await;
+
+    let futures = hashes.iter().map(|hash| {
+        let tm = &task_manager;
+        async move { tm.spawn_task(hash).await.map_err(|e| e.to_string()) }
+    });
+
+    let results = join_all(futures).await;
+    for r in &results {
+        r.as_ref().map_err(|e| e.clone())?;
     }
 
     Ok(hashes)
@@ -31,11 +40,18 @@ async fn spawn_tasks(
 #[tauri::command]
 async fn pause_tasks(
     hashes: Vec<String>,
-    task_manager: tauri::State<'_, TaskManagerState>,
+    task_manager: tauri::State<'_, SharedTaskManager>,
 ) -> Result<Vec<String>, String> {
-    let manager = task_manager.lock().await;
-    for hash in &hashes {
-        manager.pause_task(hash).await.map_err(|e| e.to_string())?;
+    let task_manager = task_manager.lock().await;
+
+    let futures = hashes.iter().map(|hash| {
+        let tm = &task_manager;
+        async move { tm.pause_task(hash).await.map_err(|e| e.to_string()) }
+    });
+
+    let results = join_all(futures).await;
+    for r in &results {
+        r.as_ref().map_err(|e| e.clone())?;
     }
 
     Ok(hashes)
@@ -44,14 +60,18 @@ async fn pause_tasks(
 #[tauri::command]
 async fn restart_tasks(
     hashes: Vec<String>,
-    task_manager: tauri::State<'_, TaskManagerState>,
+    task_manager: tauri::State<'_, SharedTaskManager>,
 ) -> Result<Vec<String>, String> {
-    let mut manager = task_manager.lock().await;
-    for hash in &hashes {
-        manager
-            .restart_task(hash)
-            .await
-            .map_err(|e| e.to_string())?;
+    let task_manager = task_manager.lock().await;
+
+    let futures = hashes.iter().map(|hash| {
+        let tm = &task_manager;
+        async move { tm.restart_task(hash).await.map_err(|e| e.to_string()) }
+    });
+
+    let results = join_all(futures).await;
+    for r in &results {
+        r.as_ref().map_err(|e| e.clone())?;
     }
 
     Ok(hashes)
@@ -60,11 +80,14 @@ async fn restart_tasks(
 #[tauri::command]
 async fn remove_tasks(
     hashes: Vec<String>,
-    task_manager: tauri::State<'_, TaskManagerState>,
+    task_manager: tauri::State<'_, SharedTaskManager>,
 ) -> Result<Vec<String>, String> {
-    let mut manager = task_manager.lock().await;
+    let mut task_manager = task_manager.lock().await;
     for hash in &hashes {
-        manager.remove_task(hash).await.map_err(|e| e.to_string())?;
+        task_manager
+            .remove_task(hash)
+            .await
+            .map_err(|e| e.to_string())?;
     }
 
     Ok(hashes)
@@ -72,10 +95,10 @@ async fn remove_tasks(
 
 #[tauri::command]
 async fn get_tasks(
-    task_manager: tauri::State<'_, TaskManagerState>,
+    task_manager: tauri::State<'_, SharedTaskManager>,
 ) -> Result<Vec<TaskJson>, String> {
-    let manager = task_manager.lock().await;
-    let tasks = manager.list_tasks().await;
+    let task_manager = task_manager.lock().await;
+    let tasks = task_manager.list_tasks().await;
     Ok(tasks)
 }
 
@@ -84,14 +107,14 @@ async fn add_task(
     filename: String,
     file_path: String,
     url: String,
-    task_manager: tauri::State<'_, TaskManagerState>,
+    task_manager: tauri::State<'_, SharedTaskManager>,
 ) -> Result<String, String> {
-    let mut manager = task_manager.lock().await;
-    let task = Task::new(&filename, &file_path, &url, manager.client())
+    let mut task_manager = task_manager.lock().await;
+    let task = Task::new(&filename, &file_path, &url, task_manager.client())
         .await
         .map_err(|e| e.to_string())?;
     let path = task.file_path().to_string_lossy().to_string();
-    manager.add_task(task);
+    task_manager.add_task(task);
 
     Ok(path)
 }
@@ -107,11 +130,9 @@ pub fn run() {
         .manage(task_manager.clone())
         .on_window_event(move |_window, event| {
             if let WindowEvent::CloseRequested { api: _, .. } = event {
-                let task_manager_cloned = task_manager.clone();
+                let storing_task_manager = task_manager.clone();
                 tauri::async_runtime::block_on(async move {
-                    if let Err(e) = task_manager_cloned.lock().await.save_tasks().await {
-                        eprintln!("Failed to save tasks: {e}");
-                    }
+                    storing_task_manager.lock().await.save().await.unwrap();
                 });
             }
         })
