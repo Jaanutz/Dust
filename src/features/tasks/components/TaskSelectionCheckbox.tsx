@@ -18,7 +18,9 @@ export default function TaskSelectionCheckbox({
           checked={isChecked}
           onChange={(e) => onChange?.(e.target.checked)}
         />
-        <Check className="absolute inset-0 text-sm text-white p-0.5" />
+        <Check
+          className={`absolute inset-0 text-sm text-white p-0.5 transition-opacity duration-200 ${isChecked ? "opacity-100" : "opacity-0"}`}
+        />
       </label>
     </div>
   );
