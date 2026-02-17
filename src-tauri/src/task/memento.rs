@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::task::TaskState;
 
 #[derive(Serialize, Deserialize)]
-pub struct TaskMomento {
+pub struct TaskMemento {
     pub hash: String,
     pub file_path: PathBuf,
     pub url: String,
@@ -13,7 +13,7 @@ pub struct TaskMomento {
     pub state: TaskState,
 }
 
-impl TaskMomento {
+impl TaskMemento {
     pub fn new(
         hash: String,
         file_path: PathBuf,

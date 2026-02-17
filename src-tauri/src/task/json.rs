@@ -8,7 +8,6 @@ pub struct TaskJson {
     bytes_received: u64,
     total_bytes: Option<u64>,
     progress: Option<f64>,
-
     filename: String,
     url: String,
     hash: String,
