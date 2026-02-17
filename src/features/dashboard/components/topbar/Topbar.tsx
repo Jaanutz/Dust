@@ -5,8 +5,8 @@ import { useState } from "react";
 import { TaskTable } from "@/features/tasks/types/TaskTable";
 import { useTaskStore } from "@/stores/taskStore";
 
-import IconButton from "./IconButton";
 import CurrentViewLabel from "./CurrentViewLabel";
+import IconButton from "./IconButton";
 import TaskCreationModal from "../modal/TaskCreationModal";
 
 interface TopbarProps {

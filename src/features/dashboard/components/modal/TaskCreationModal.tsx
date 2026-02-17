@@ -1,11 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { CircleX } from "lucide-react";
+import { useState } from "react";
 
 import { useTaskStore } from "@/stores/taskStore";
 
 import DirectorySelector from "./DirectoryPicker";
 import TaskCreationModalInput from "./TaskCreationModalInput";
-import { useState } from "react";
 
 interface TaskCreationModalProps {
   close: () => void;
