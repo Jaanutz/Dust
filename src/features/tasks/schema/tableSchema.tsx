@@ -60,6 +60,10 @@ export const COLUMNS = [
     },
     className: "w-[25%]",
   }),
+  createColumn("speed", "Speed", {
+    formatter: (row) => formatBytes(row.speed ?? 0) + '/s',
+    className: "w-[15%]",
+  }),
   createColumn("total_bytes", "Size", {
     formatter: (row) => formatBytes(row.total_bytes ?? 0),
     className: "w-[15%]",

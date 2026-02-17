@@ -1,4 +1,6 @@
 use std::path::PathBuf;
+use std::time::Instant;
+use std::collections::VecDeque;
 
 use reqwest::Client;
 use sha1::{Digest, Sha1};
@@ -15,7 +17,9 @@ pub struct Task {
     hash: String,
     file_path: PathBuf,
     url: Url,
+
     bytes_received: u64,
+    history_bytes_received: VecDeque<(Instant, u64)>,
     total_bytes: Option<u64>,
     state: TaskState,
 }
@@ -42,6 +46,7 @@ impl Task {
         Ok(Task {
             state: TaskState::Paused,
             bytes_received: 0,
+            history_bytes_received: VecDeque::new(),
             total_bytes,
             file_path: file_path_with_name,
             url,
@@ -102,6 +107,14 @@ impl Task {
         self.bytes_received += bytes;
     }
 
+    pub fn update_history_bytes_received(&mut self, timestamp: Instant) {
+        let max_length = 15;
+        self.history_bytes_received.push_back((timestamp, self.bytes_received));
+        if self.history_bytes_received.len() >= max_length {
+            self.history_bytes_received.pop_front();
+        }
+    }
+
     pub async fn finalize(&mut self) -> Result<(), Error> {
         fs::rename(self.part_file_path(), self.file_path.clone()).await?;
         self.state = TaskState::Completed;
@@ -115,10 +128,22 @@ impl Task {
     pub fn reset_received_bytes(&mut self) {
         self.bytes_received = 0;
     }
+
+    pub fn average_speed(&self) -> Option<f64>{
+        let history = self.history_bytes_received.clone();
+        if let (Some((start_time, start_bytes)), Some((end_time, end_bytes))) =
+            (history.front(), history.back()) {
+            let duration = end_time.duration_since(*start_time).as_secs_f64();
+            if duration > 0.1 {
+                return Some((end_bytes - start_bytes) as f64 / duration as f64);
+            }
+        }
+        None
+    }
 }
 
 impl Task {
-    pub fn snapshot(&self) -> TaskMemento {
+    pub fn snapshot(&self) -> TaskMomento {
         let original_state = self.state.clone();
         let state = if matches!(self.state, TaskState::Running) {
             TaskState::Paused
@@ -156,7 +181,7 @@ impl Task {
 
         Ok(task)
     }
-}
+*
 
 impl Task {
     pub fn to_json(&self) -> TaskJson {
@@ -165,6 +190,7 @@ impl Task {
             self.bytes_received,
             self.total_bytes,
             self.progress(),
+            self.average_speed(),
             self.filename(),
             self.url.to_string(),
             self.hash.clone(),
