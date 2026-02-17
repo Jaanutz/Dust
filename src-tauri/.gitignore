@@ -7,4 +7,5 @@
 /gen/schemas
 
 /downloads/
+!/downloads/.gitkeep
 tasks.json
