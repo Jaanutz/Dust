@@ -8,6 +8,7 @@ pub struct TaskJson {
     bytes_received: u64,
     total_bytes: Option<u64>,
     progress: Option<f64>,
+    speed: Option<f64>,
 
     filename: String,
     url: String,
@@ -20,6 +21,7 @@ impl TaskJson {
         bytes_received: u64,
         total_bytes: Option<u64>,
         progress: Option<f64>,
+        speed: Option<f64>,
         filename: String,
         url: String,
         hash: String,
@@ -29,6 +31,7 @@ impl TaskJson {
             bytes_received,
             total_bytes,
             progress,
+            speed,
             filename,
             url,
             hash,
