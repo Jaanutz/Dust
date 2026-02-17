@@ -95,7 +95,6 @@ impl DownloadWorker {
         file.flush().await?;
         file.sync_all().await?;
 
-
         self.task.lock().await.finalize().await?;
 
         Ok(())

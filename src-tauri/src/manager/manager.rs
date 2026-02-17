@@ -6,7 +6,7 @@ use tokio::task::JoinHandle;
 
 use crate::{
     error::Error,
-    task::{Task, TaskJson, TaskMomento},
+    task::{Task, TaskJson, TaskMemento},
     worker::DownloadWorker,
 };
 
@@ -105,7 +105,7 @@ impl TaskManager {
 
     async fn restore() -> Result<HashMap<String, DownloadWorker>, Error> {
         let json = tokio::fs::read_to_string(Self::TASKS_FILE).await?;
-        let snapshots: Vec<TaskMomento> = serde_json::from_str(&json)?;
+        let snapshots: Vec<TaskMemento> = serde_json::from_str(&json)?;
 
         let mut workers = HashMap::new();
         for snapshot in snapshots {

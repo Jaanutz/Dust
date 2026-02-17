@@ -10,7 +10,7 @@ use url::Url;
 use crate::{
     error::Error,
     network::{fetch_total_bytes, get_best_extension},
-    task::{TaskJson, TaskMomento, TaskState},
+    task::{TaskJson, TaskMemento, TaskState},
 };
 
 pub struct Task {
@@ -151,7 +151,7 @@ impl Task {
             original_state
         };
 
-        TaskMomento::new(
+        TaskMemento::new(
             self.hash.clone(),
             self.file_path.clone(),
             self.url.to_string(),
@@ -160,7 +160,7 @@ impl Task {
         )
     }
 
-    pub async fn restore(snapshot: TaskMomento) -> Result<Self, Error> {
+    pub async fn restore(snapshot: TaskMemento) -> Result<Self, Error> {
         let url = Url::parse(&snapshot.url)?;
 
         let mut task = Task {
@@ -169,7 +169,6 @@ impl Task {
             url,
             bytes_received: 0,
             total_bytes: snapshot.total_bytes,
-            history_bytes_received:VecDeque::new(),
             state: snapshot.state,
         };
 
@@ -182,7 +181,7 @@ impl Task {
 
         Ok(task)
     }
-}
+*
 
 impl Task {
     pub fn to_json(&self) -> TaskJson {
