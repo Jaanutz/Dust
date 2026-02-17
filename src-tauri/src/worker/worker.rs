@@ -1,6 +1,6 @@
+use reqwest::{Client, StatusCode};
 use std::sync::Arc;
 use std::time::Instant;
-use reqwest::{Client, StatusCode};
 use tokio::{fs::OpenOptions, io::AsyncWriteExt, select, spawn, sync::Mutex, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
@@ -89,7 +89,6 @@ impl DownloadWorker {
                     .update_history_bytes_received(Instant::now());
                 last_history_push = Instant::now();
             }
-
         }
 
         file.flush().await?;
@@ -117,6 +116,7 @@ impl DownloadWorker {
         }
 
         task_guard.set_state(TaskState::Running);
+        task_guard.clear_history();
         drop(task_guard);
 
         *self.cancellation_token.lock().await = CancellationToken::new();
@@ -151,6 +151,5 @@ impl DownloadWorker {
 
         task_guard.set_state(TaskState::Cancelled);
         task_guard.reset_received_bytes();
-
     }
 }

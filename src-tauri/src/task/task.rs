@@ -1,6 +1,6 @@
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::time::Instant;
-use std::collections::VecDeque;
 
 use reqwest::Client;
 use sha1::{Digest, Sha1};
@@ -109,7 +109,8 @@ impl Task {
 
     pub fn update_history_bytes_received(&mut self, timestamp: Instant) {
         let max_length = 15;
-        self.history_bytes_received.push_back((timestamp, self.bytes_received));
+        self.history_bytes_received
+            .push_back((timestamp, self.bytes_received));
         if self.history_bytes_received.len() >= max_length {
             self.history_bytes_received.pop_front();
         }
@@ -129,10 +130,15 @@ impl Task {
         self.bytes_received = 0;
     }
 
-    pub fn average_speed(&self) -> Option<f64>{
+    pub fn clear_history(&mut self) {
+        self.history_bytes_received.clear();
+    }
+
+    pub fn average_speed(&self) -> Option<f64> {
         let history = self.history_bytes_received.clone();
         if let (Some((start_time, start_bytes)), Some((end_time, end_bytes))) =
-            (history.front(), history.back()) {
+            (history.front(), history.back())
+        {
             let duration = end_time.duration_since(*start_time).as_secs_f64();
             if duration > 0.1 {
                 return Some((end_bytes - start_bytes) as f64 / duration as f64);
@@ -143,7 +149,7 @@ impl Task {
 }
 
 impl Task {
-    pub fn snapshot(&self) -> TaskMomento {
+    pub fn snapshot(&self) -> TaskMemento {
         let original_state = self.state.clone();
         let state = if matches!(self.state, TaskState::Running) {
             TaskState::Paused
@@ -167,6 +173,7 @@ impl Task {
             hash: snapshot.hash,
             file_path: snapshot.file_path,
             url,
+            history_bytes_received: VecDeque::new(),
             bytes_received: 0,
             total_bytes: snapshot.total_bytes,
             state: snapshot.state,
@@ -181,7 +188,7 @@ impl Task {
 
         Ok(task)
     }
-*
+}
 
 impl Task {
     pub fn to_json(&self) -> TaskJson {
