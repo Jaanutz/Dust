@@ -78,11 +78,13 @@ impl DownloadWorker {
             self.task
                 .lock()
                 .await
-                .add_bytes_received(bytes.len() as u64);
+                .add_bytes_received(bytes.len() as u64)
+                .add_history_bytes_received(bytes.len() as u64);
         }
 
         file.flush().await?;
         file.sync_all().await?;
+
 
         self.task.lock().await.finalize().await?;
 
