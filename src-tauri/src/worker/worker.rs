@@ -44,13 +44,18 @@ impl DownloadWorker {
         }
 
         let mut response = request.send().await?;
+        let mut has_to_start_from_beginning = false;
         if response.status() != StatusCode::PARTIAL_CONTENT {
             response = client.get(&url).send().await?;
+            has_to_start_from_beginning = true;
+            self.task.lock().await.reset_received_bytes();
         }
 
         let mut file = OpenOptions::new()
             .create(true)
-            .append(true)
+            .write(true)
+            .append(!has_to_start_from_beginning)
+            .truncate(has_to_start_from_beginning)
             .open(&part_file_path)
             .await?;
 
@@ -91,7 +96,6 @@ impl DownloadWorker {
             }
         }
 
-        file.flush().await?;
         file.sync_all().await?;
 
         self.task.lock().await.finalize().await?;
