@@ -1,6 +1,4 @@
-use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::time::Instant;
 
 use reqwest::Client;
 use sha1::{Digest, Sha1};
@@ -10,7 +8,7 @@ use url::Url;
 use crate::{
     error::Error,
     network::{fetch_total_bytes, get_best_extension},
-    task::{TaskJson, TaskMemento, TaskState},
+    task::{DownloadHistory, TaskJson, TaskMemento, TaskState},
 };
 
 pub struct Task {
@@ -19,7 +17,7 @@ pub struct Task {
     url: Url,
 
     bytes_received: u64,
-    history_bytes_received: VecDeque<(Instant, u64)>,
+    download_history: DownloadHistory,
     total_bytes: Option<u64>,
     state: TaskState,
 }
@@ -46,7 +44,7 @@ impl Task {
         Ok(Task {
             state: TaskState::Paused,
             bytes_received: 0,
-            history_bytes_received: VecDeque::new(),
+            download_history: DownloadHistory::new(),
             total_bytes,
             file_path: file_path_with_name,
             url,
@@ -103,17 +101,9 @@ impl Task {
 }
 
 impl Task {
-    pub fn add_bytes_received(&mut self, bytes: u64) {
-        self.bytes_received += bytes;
-    }
-
-    pub fn update_history_bytes_received(&mut self, timestamp: Instant) {
-        let max_length = 15;
-        self.history_bytes_received
-            .push_back((timestamp, self.bytes_received));
-        if self.history_bytes_received.len() >= max_length {
-            self.history_bytes_received.pop_front();
-        }
+    pub fn update(&mut self, len: u64) {
+        self.bytes_received += len;
+        self.download_history.try_push(self.bytes_received);
     }
 
     pub async fn finalize(&mut self) -> Result<(), Error> {
@@ -131,26 +121,13 @@ impl Task {
     }
 
     pub fn clear_history(&mut self) {
-        self.history_bytes_received.clear();
-    }
-
-    pub fn average_speed(&self) -> Option<f64> {
-        let history = self.history_bytes_received.clone();
-        if let (Some((start_time, start_bytes)), Some((end_time, end_bytes))) =
-            (history.front(), history.back())
-        {
-            let duration = end_time.duration_since(*start_time).as_secs_f64();
-            if duration > 0.1 {
-                return Some((end_bytes - start_bytes) as f64 / duration as f64);
-            }
-        }
-        None
+        self.download_history.clear();
     }
 }
 
 impl Task {
     pub fn snapshot(&self) -> TaskMemento {
-        let original_state = self.state.clone();
+        let original_state = self.state;
         let state = if matches!(self.state, TaskState::Running) {
             TaskState::Paused
         } else {
@@ -173,7 +150,7 @@ impl Task {
             hash: snapshot.hash,
             file_path: snapshot.file_path,
             url,
-            history_bytes_received: VecDeque::new(),
+            download_history: DownloadHistory::new(),
             bytes_received: 0,
             total_bytes: snapshot.total_bytes,
             state: snapshot.state,
@@ -193,11 +170,11 @@ impl Task {
 impl Task {
     pub fn to_json(&self) -> TaskJson {
         TaskJson::new(
-            self.state.clone(),
+            self.state,
             self.bytes_received,
             self.total_bytes,
             self.progress(),
-            self.average_speed(),
+            self.download_history.average_speed(),
             self.filename(),
             self.url.to_string(),
             self.hash.clone(),

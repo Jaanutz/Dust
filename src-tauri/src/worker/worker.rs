@@ -1,6 +1,5 @@
 use reqwest::{Client, StatusCode};
 use std::sync::Arc;
-use std::time::Instant;
 use tokio::{fs::OpenOptions, io::AsyncWriteExt, select, sync::Mutex};
 use tokio_util::sync::CancellationToken;
 
@@ -73,8 +72,7 @@ impl DownloadWorker {
             .await?;
 
         let cancellation_token = self.cancellation_token.clone();
-        let mut last_history_push = Instant::now();
-        let min_millis_since_push = 200;
+
         loop {
             let token_guard = cancellation_token.lock().await;
             let chunk = {
@@ -93,20 +91,7 @@ impl DownloadWorker {
             };
 
             file.write_all(&bytes).await?;
-
-            self.task
-                .lock()
-                .await
-                .add_bytes_received(bytes.len() as u64);
-
-            let now = Instant::now();
-            if now.duration_since(last_history_push).as_millis() > min_millis_since_push as u128 {
-                self.task
-                    .lock()
-                    .await
-                    .update_history_bytes_received(Instant::now());
-                last_history_push = Instant::now();
-            }
+            self.task.lock().await.update(bytes.len() as u64);
         }
 
         file.sync_all().await?;
@@ -118,6 +103,10 @@ impl DownloadWorker {
 
     pub(super) async fn cancel(&self) {
         self.cancellation_token.lock().await.cancel();
+    }
+
+    pub(super) async fn reset_cancellation_token(&self) {
+        *self.cancellation_token.lock().await = CancellationToken::new();
     }
 }
 
@@ -137,9 +126,5 @@ impl DownloadWorker {
         }
 
         command.execute(&mut context).await
-    }
-
-    pub async fn reset_cancellation_token(&self) {
-        *self.cancellation_token.lock().await = CancellationToken::new();
     }
 }
