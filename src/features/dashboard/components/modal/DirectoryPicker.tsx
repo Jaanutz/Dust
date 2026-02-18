@@ -15,6 +15,8 @@ export default function DirectorySelector({
       directory: true,
       multiple: false,
     });
+    if (result === null) return;
+
     setDirectory(result);
   };
 
@@ -39,11 +41,19 @@ export default function DirectorySelector({
           type="text"
           id={"fileDirectory"}
           name={"fileDirectory"}
-          value={directory ?? ""}
+          value={directory ? truncateMiddle(directory) : ""}
           className="py-0.5 px-3 block w-full bg-secondary-background text-base outline outline-secondary-text/20 rounded-sm focus:outline-offset-0"
           placeholder={"Choose the file directory"}
         />
       </div>
     </div>
   );
+}
+
+function truncateMiddle(value: string) {
+  const maxLength = 45;
+  if (value.length <= maxLength) return value;
+
+  const endLength = maxLength;
+  return "…" + value.slice(value.length - endLength);
 }

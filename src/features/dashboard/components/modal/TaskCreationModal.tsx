@@ -7,18 +7,29 @@ import { useTaskStore } from "@/stores/taskStore";
 import DirectorySelector from "./DirectoryPicker";
 import TaskCreationModalInput from "./TaskCreationModalInput";
 
+const DEFAULT_DIRECTORY_KEY = "defaultDirectory";
+
 interface TaskCreationModalProps {
   close: () => void;
 }
 
 export default function TaskCreationModal({ close }: TaskCreationModalProps) {
   const refresh = useTaskStore((state) => state.refresh);
-  const [directory, setDirectory] = useState<string | null>(null);
+  const [directory, setDirectory] = useState<string | null>(
+    localStorage.getItem(DEFAULT_DIRECTORY_KEY) || null,
+  );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const handleSetDirectory = (dir: string | null) => {
+    setDirectory(dir);
+    if (dir) {
+      localStorage.setItem(DEFAULT_DIRECTORY_KEY, dir);
+    }
+  };
 
   const inputItems = [
     { label: "URL", placeholder: "Enter the URL" },
-    { label: "Filename", placeholder: "Enter the filename" },
+    { label: "Rename", placeholder: "Enter a new name (optional)" },
   ];
 
   async function handleSubmit(event: React.FormEvent) {
@@ -31,11 +42,6 @@ export default function TaskCreationModal({ close }: TaskCreationModalProps) {
 
       if (!url) {
         setErrorMessage("URL is required.");
-        return;
-      }
-
-      if (!filename) {
-        setErrorMessage("Filename is required.");
         return;
       }
 
@@ -77,7 +83,7 @@ export default function TaskCreationModal({ close }: TaskCreationModalProps) {
             ))}
             <DirectorySelector
               directory={directory}
-              setDirectory={setDirectory}
+              setDirectory={handleSetDirectory}
             />
           </div>
           <div className="mt-6">
