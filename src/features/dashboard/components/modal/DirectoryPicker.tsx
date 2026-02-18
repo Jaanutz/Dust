@@ -14,6 +14,7 @@ export default function DirectorySelector({
     const result = await open({
       directory: true,
       multiple: false,
+      defaultPath: directory ?? undefined,
     });
     if (result === null) return;
 
