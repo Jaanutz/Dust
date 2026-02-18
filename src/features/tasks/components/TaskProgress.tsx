@@ -24,13 +24,14 @@ export default function TaskProgress({ progress }: TaskProgress) {
   );
 }
 
-// between -0.8 and 0, where -0.8 is the fastest
-const deviation = -0.5;
+// between 0 and 1
+const CURVE_STRENGTH = 0.5;
 
 function fastSlowFast(t: number) {
+  const amplitude = CURVE_STRENGTH / (2 - Math.PI);
   return (
-    (1 - 2 * deviation) * t +
-    deviation +
-    deviation * Math.sin(Math.PI * (t - 0.5))
+    (1 - 2 * amplitude) * t +
+    amplitude +
+    amplitude * Math.sin(Math.PI * (t - 0.5))
   );
 }
