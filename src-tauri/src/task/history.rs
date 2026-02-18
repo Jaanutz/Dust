@@ -4,21 +4,23 @@ use tokio::time::Instant;
 
 pub struct DownloadHistory {
     pub bytes: VecDeque<(Instant, u64)>,
-    pub last_push: Instant,
 }
 
 impl DownloadHistory {
     const MAX_ENTRIES: usize = 16;
+    const MIN_MILLIS_BETWEEN_PUSHES: u128 = 200;
 
     pub fn new() -> Self {
         DownloadHistory {
             bytes: VecDeque::new(),
-            last_push: Instant::now(),
         }
     }
 
     fn can_push(&self) -> bool {
-        self.last_push.elapsed().as_millis() >= 200
+        self.bytes
+            .back()
+            .map(|(time, _)| time.elapsed().as_millis() >= Self::MIN_MILLIS_BETWEEN_PUSHES)
+            .unwrap_or(true)
     }
 
     pub fn try_push(&mut self, bytes: u64) {
@@ -30,7 +32,6 @@ impl DownloadHistory {
         if self.bytes.len() > Self::MAX_ENTRIES {
             self.bytes.pop_front();
         }
-        self.last_push = Instant::now();
     }
 
     pub fn clear(&mut self) {
