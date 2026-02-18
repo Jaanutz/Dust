@@ -56,7 +56,11 @@ export const COLUMNS = [
   }),
   createColumn("progress", "Progress", {
     cell: (row) => {
-      return <TaskProgress progress={row.progress ?? 0} />;
+      return row.progress === null ? (
+        "Unknown"
+      ) : (
+        <TaskProgress progress={row.progress} />
+      );
     },
     className: "w-[25%]",
   }),
@@ -65,7 +69,8 @@ export const COLUMNS = [
     className: "w-[15%]",
   }),
   createColumn("total_bytes", "Size", {
-    formatter: (row) => formatBytes(row.total_bytes ?? 0),
+    formatter: (row) =>
+      row.total_bytes === null ? "Unknown" : formatBytes(row.total_bytes),
     className: "w-[15%]",
   }),
   createColumn("state", "State", {

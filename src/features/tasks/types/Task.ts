@@ -7,7 +7,7 @@ export interface Task {
   url: string;
   hash: string;
 
-  total_bytes?: number;
-  progress?: number;
-  speed?: number;
+  total_bytes: number | null;
+  progress: number | null;
+  speed: number | null;
 }
