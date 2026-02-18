@@ -33,7 +33,7 @@ export default function Sidebar() {
   const viewState = useViewStore((state) => state);
 
   return (
-    <aside className="pr-8 pl-2 w-70">
+    <aside className="pr-8 pl-2 w-60">
       <h2 className="ml-5">Tasks</h2>
       <ul className="mt-2 flex flex-col gap-1.75">
         {SIDEBAR_OPTIONS.map((item) => (

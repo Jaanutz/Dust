@@ -52,7 +52,7 @@ const createColumn = (
 
 export const COLUMNS = [
   createColumn("filename", "Filename", {
-    className: "w-[30%]",
+    className: "w-[22%]",
   }),
   createColumn("progress", "Progress", {
     cell: (row) => {
@@ -61,7 +61,7 @@ export const COLUMNS = [
     className: "w-[25%]",
   }),
   createColumn("speed", "Speed", {
-    formatter: (row) => formatBytes(row.speed ?? 0) + '/s',
+    formatter: (row) => formatBytes(row.speed ?? 0) + "/s",
     className: "w-[15%]",
   }),
   createColumn("total_bytes", "Size", {
