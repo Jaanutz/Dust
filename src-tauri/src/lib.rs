@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use futures::future::join_all;
 use tauri::WindowEvent;
 use tokio::sync::Mutex;
 
 use crate::{
     manager::TaskManager,
     task::{Task, TaskJson},
+    worker::command::{AbortCommand, PauseCommand, RestartCommand, SpawnCommand},
 };
 
 pub mod error;
@@ -23,16 +23,7 @@ async fn spawn_tasks(
     task_manager: tauri::State<'_, SharedTaskManager>,
 ) -> Result<Vec<String>, String> {
     let task_manager = task_manager.lock().await;
-
-    let futures = hashes.iter().map(|hash| {
-        let tm = &task_manager;
-        async move { tm.spawn_task(hash).await.map_err(|e| e.to_string()) }
-    });
-
-    let results = join_all(futures).await;
-    for r in &results {
-        r.as_ref().map_err(|e| e.clone())?;
-    }
+    task_manager.run_command_vec(&hashes, SpawnCommand).await?;
 
     Ok(hashes)
 }
@@ -43,16 +34,7 @@ async fn pause_tasks(
     task_manager: tauri::State<'_, SharedTaskManager>,
 ) -> Result<Vec<String>, String> {
     let task_manager = task_manager.lock().await;
-
-    let futures = hashes.iter().map(|hash| {
-        let tm = &task_manager;
-        async move { tm.pause_task(hash).await.map_err(|e| e.to_string()) }
-    });
-
-    let results = join_all(futures).await;
-    for r in &results {
-        r.as_ref().map_err(|e| e.clone())?;
-    }
+    task_manager.run_command_vec(&hashes, PauseCommand).await?;
 
     Ok(hashes)
 }
@@ -63,16 +45,9 @@ async fn restart_tasks(
     task_manager: tauri::State<'_, SharedTaskManager>,
 ) -> Result<Vec<String>, String> {
     let task_manager = task_manager.lock().await;
-
-    let futures = hashes.iter().map(|hash| {
-        let tm = &task_manager;
-        async move { tm.restart_task(hash).await.map_err(|e| e.to_string()) }
-    });
-
-    let results = join_all(futures).await;
-    for r in &results {
-        r.as_ref().map_err(|e| e.clone())?;
-    }
+    task_manager
+        .run_command_vec(&hashes, RestartCommand)
+        .await?;
 
     Ok(hashes)
 }
@@ -83,11 +58,10 @@ async fn remove_tasks(
     task_manager: tauri::State<'_, SharedTaskManager>,
 ) -> Result<Vec<String>, String> {
     let mut task_manager = task_manager.lock().await;
-    for hash in &hashes {
-        task_manager
-            .remove_task(hash)
-            .await
-            .map_err(|e| e.to_string())?;
+    task_manager.run_command_vec(&hashes, AbortCommand).await?;
+
+    for hash in hashes.iter() {
+        task_manager.remove_task(hash).map_err(|e| e.to_string())?;
     }
 
     Ok(hashes)
@@ -99,6 +73,7 @@ async fn get_tasks(
 ) -> Result<Vec<TaskJson>, String> {
     let task_manager = task_manager.lock().await;
     let tasks = task_manager.list_tasks().await;
+
     Ok(tasks)
 }
 

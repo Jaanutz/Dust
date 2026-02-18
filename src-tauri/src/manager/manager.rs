@@ -2,12 +2,11 @@ use std::collections::HashMap;
 
 use futures::future::join_all;
 use reqwest::Client;
-use tokio::task::JoinHandle;
 
 use crate::{
     error::Error,
     task::{Task, TaskJson, TaskMemento},
-    worker::DownloadWorker,
+    worker::{Command, CommandContext, DownloadWorker},
 };
 
 pub struct TaskManager {
@@ -41,49 +40,55 @@ impl TaskManager {
         hash
     }
 
-    pub async fn remove_task(&mut self, hash: &str) -> Result<(), Error> {
+    pub fn remove_task(&mut self, hash: &str) -> Result<(), Error> {
+        if self.workers.remove(hash).is_some() {
+            Ok(())
+        } else {
+            Err(Error::TaskNotFound(hash.to_string()))
+        }
+    }
+}
+
+impl TaskManager {
+    pub async fn run_command(&self, hash: &str, command: impl Command) -> Result<(), Error> {
         let worker = self.get_worker(hash);
-        if let Some(worker) = worker {
-            worker.abort().await;
-            self.workers.remove(hash);
+        if let Some(mut worker) = worker {
+            let context = CommandContext {
+                worker: &mut worker,
+                client: &self.client,
+            };
+            command.execute(&context).await?;
         } else {
             return Err(Error::TaskNotFound(hash.to_string()));
         }
         Ok(())
     }
 
-    pub async fn pause_task(&self, hash: &str) -> Result<(), Error> {
-        let worker = self.get_worker(hash);
-        if let Some(worker) = worker {
-            worker.pause().await?;
-        } else {
-            return Err(Error::TaskNotFound(hash.to_string()));
-        }
+    pub async fn run_command_vec<C: Command>(
+        &self,
+        hashes: &[String],
+        command: C,
+    ) -> Result<(), String> {
+        let futures = hashes.iter().map(|hash| {
+            let command = command.clone();
+            async move { self.run_command(hash, command).await }
+        });
+
+        let results = join_all(futures).await;
+        results
+            .into_iter()
+            .try_for_each(|r| r)
+            .map_err(|e| e.to_string())?;
+
         Ok(())
-    }
-
-    pub async fn spawn_task(&self, hash: &str) -> Result<Option<JoinHandle<()>>, Error> {
-        let worker = self.get_worker(hash);
-        if let Some(mut worker) = worker {
-            return worker.spawn(self.client.clone()).await;
-        }
-        return Err(Error::TaskNotFound(hash.to_string()));
-    }
-
-    pub async fn restart_task(&self, hash: &str) -> Result<JoinHandle<()>, Error> {
-        let worker = self.get_worker(hash);
-        if let Some(mut worker) = worker {
-            worker.abort().await;
-            return Ok(worker.spawn(self.client.clone()).await?.unwrap());
-        }
-        return Err(Error::TaskNotFound(hash.to_string()));
     }
 
     pub async fn list_tasks(&self) -> Vec<TaskJson> {
-        let futures = self
-            .workers
-            .iter()
-            .map(|(_, worker)| async { worker.task().lock().await.to_json() });
+        let futures = self.workers.iter().map(|(_, worker)| async {
+            let json = worker.with_task(|task| task.to_json()).await;
+            json
+        });
+
         join_all(futures).await
     }
 }
@@ -92,12 +97,15 @@ impl TaskManager {
     const TASKS_FILE: &str = "tasks.json";
 
     pub async fn save(&self) -> Result<(), Error> {
-        let futures = self.workers.values().map(|worker| {
-            let task = worker.task();
-            async move { task.lock().await.snapshot() }
+        let workers: Vec<_> = self.workers.values().cloned().collect();
+
+        let futures = workers.into_iter().map(|worker| async move {
+            let snapshot = worker.with_task(|task| task.snapshot()).await;
+            snapshot
         });
 
         let snapshots = join_all(futures).await;
+
         let json = serde_json::to_string_pretty(&snapshots)?;
         std::fs::write(Self::TASKS_FILE, json)?;
         Ok(())

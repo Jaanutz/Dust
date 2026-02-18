@@ -93,8 +93,8 @@ impl Task {
         None
     }
 
-    pub fn state(&self) -> &TaskState {
-        &self.state
+    pub fn state(&self) -> TaskState {
+        self.state
     }
 
     pub fn url(&self) -> &Url {

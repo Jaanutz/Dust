@@ -1,12 +1,13 @@
 use reqwest::{Client, StatusCode};
 use std::sync::Arc;
 use std::time::Instant;
-use tokio::{fs::OpenOptions, io::AsyncWriteExt, select, spawn, sync::Mutex, task::JoinHandle};
+use tokio::{fs::OpenOptions, io::AsyncWriteExt, select, sync::Mutex};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     error::Error,
-    task::{Task, TaskState},
+    task::Task,
+    worker::{Command, CommandContext},
 };
 
 #[derive(Clone)]
@@ -25,13 +26,25 @@ impl DownloadWorker {
 }
 
 impl DownloadWorker {
-    pub fn task(&self) -> Arc<Mutex<Task>> {
-        self.task.clone()
+    pub async fn with_task<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&Task) -> R,
+    {
+        let task = self.task.lock().await;
+        f(&task)
+    }
+
+    pub(super) async fn with_task_mut<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&mut Task) -> R,
+    {
+        let mut task = self.task.lock().await;
+        f(&mut task)
     }
 }
 
 impl DownloadWorker {
-    pub async fn run(&self, client: &Client) -> Result<(), Error> {
+    pub(super) async fn run(&self, client: &Client) -> Result<(), Error> {
         let task_guard = self.task.lock().await;
         let start = task_guard.bytes_received();
         let url = task_guard.url().to_string();
@@ -103,57 +116,30 @@ impl DownloadWorker {
         Ok(())
     }
 
-    async fn cancel(&self) {
+    pub(super) async fn cancel(&self) {
         self.cancellation_token.lock().await.cancel();
     }
 }
 
 impl DownloadWorker {
-    pub async fn spawn(&mut self, client: Client) -> Result<Option<JoinHandle<()>>, Error> {
-        let mut task_guard = self.task.lock().await;
+    pub async fn run_command<C: Command>(
+        &mut self,
+        command: C,
+        client: &Client,
+    ) -> Result<(), Error> {
+        let mut context = CommandContext {
+            worker: self,
+            client,
+        };
 
-        if matches!(
-            *task_guard.state(),
-            TaskState::Running | TaskState::Completed
-        ) {
-            return Ok(None);
-        }
-
-        task_guard.set_state(TaskState::Running);
-        task_guard.clear_history();
-        drop(task_guard);
-
-        *self.cancellation_token.lock().await = CancellationToken::new();
-        let worker = self.clone();
-
-        Ok(Some(spawn(
-            async move { worker.run(&client).await.unwrap() },
-        )))
-    }
-
-    pub async fn pause(&self) -> Result<(), Error> {
-        let mut task_guard = self.task.lock().await;
-
-        if !matches!(*task_guard.state(), TaskState::Running) {
+        if !command.can_execute(context.worker.task.lock().await.state()) {
             return Ok(());
         }
 
-        self.cancel().await;
-
-        task_guard.set_state(TaskState::Paused);
-
-        Ok(())
+        command.execute(&mut context).await
     }
 
-    pub async fn abort(&self) {
-        self.cancel().await;
-
-        let mut task_guard = self.task.lock().await;
-
-        let _ = tokio::fs::remove_file(task_guard.part_file_path()).await;
-        let _ = tokio::fs::remove_file(task_guard.file_path()).await;
-
-        task_guard.set_state(TaskState::Cancelled);
-        task_guard.reset_received_bytes();
+    pub async fn reset_cancellation_token(&self) {
+        *self.cancellation_token.lock().await = CancellationToken::new();
     }
 }
