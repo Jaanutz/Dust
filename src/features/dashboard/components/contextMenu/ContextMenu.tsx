@@ -1,4 +1,4 @@
-import { Pause, Play, Plus, RotateCw, Trash2 } from "lucide-react";
+import { Pause, Play, RotateCw, Trash2 } from "lucide-react";
 
 import { useContextMenu } from "@/features/tasks/hooks/useContextMenu";
 
@@ -7,15 +7,10 @@ interface ContextMenuProps {
   setIsModalOpen: (open: boolean) => void;
 }
 
-export default function ContextMenu({ handleTaskAction, setIsModalOpen }: ContextMenuProps) {
+export default function ContextMenu({ handleTaskAction }: ContextMenuProps) {
   const { visible, setVisible, coords, menuRef } = useContextMenu();
 
   const buttons = [
-    {
-      label: "New",
-      icon: <Plus size={16} />,
-      onClick: () => setIsModalOpen(true),
-    },
     {
       label: "Start",
       icon: <Play size={16} />,
@@ -44,7 +39,7 @@ export default function ContextMenu({ handleTaskAction, setIsModalOpen }: Contex
   return (
     <div
       ref={menuRef}
-      className="fixed z-[9999] min-w-[180px] bg-secondary-background border border-secondary-text/20 rounded-lg shadow-2xl py-1"
+      className="fixed z-9999 min-w-45 bg-secondary-background border border-secondary-text/20 rounded-lg shadow-2xl py-1"
       style={{ left: `${coords.x}px`, top: `${coords.y}px` }}
     >
       {buttons.map((btn, idx) => (
